@@ -9,13 +9,28 @@ const closeModalButton = document.getElementById("closeModal");
 const leadForm = document.getElementById("leadForm");
 const successMessage = document.getElementById("successMessage");
 
-const formFields = {
+const contactForm = document.getElementById("contactForm");
+const contactSuccessMessage = document.getElementById("contactSuccessMessage");
+
+/* Google Apps Script Web App URL */
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwHqQyuQMpgJ5O3WgLyRJ30z6GREcWIkzb6198vzQn5KHGjUYY1bfFfAyUJmAVA6mrE/exec";
+
+const modalFormFields = {
   fullName: document.getElementById("fullName"),
   email: document.getElementById("email"),
   phone: document.getElementById("phone"),
   serviceType: document.getElementById("serviceType"),
   businessName: document.getElementById("businessName"),
   message: document.getElementById("message"),
+};
+
+const contactFormFields = {
+  fullName: document.getElementById("contactFullName"),
+  email: document.getElementById("contactEmail"),
+  phone: document.getElementById("contactPhone"),
+  serviceType: document.getElementById("contactServiceType"),
+  businessName: document.getElementById("contactBusinessName"),
+  message: document.getElementById("contactMessage"),
 };
 
 /* Mobile navigation toggle */
@@ -44,7 +59,9 @@ function openModal() {
   document.body.classList.add("body-lock");
 
   setTimeout(() => {
-    formFields.fullName.focus();
+    if (modalFormFields.fullName) {
+      modalFormFields.fullName.focus();
+    }
   }, 150);
 }
 
@@ -71,7 +88,7 @@ if (modal) {
 }
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && modal.classList.contains("show")) {
+  if (event.key === "Escape" && modal && modal.classList.contains("show")) {
     closeModal();
   }
 });
@@ -157,25 +174,78 @@ function validateField(fieldName, field) {
   return true;
 }
 
-/* Live validation */
-Object.entries(formFields).forEach(([fieldName, field]) => {
-  field.addEventListener("input", () => {
-    validateField(fieldName, field);
+function bindLiveValidation(fieldsObject) {
+  Object.entries(fieldsObject).forEach(([fieldName, field]) => {
+    if (!field) return;
+
+    field.addEventListener("input", () => {
+      validateField(fieldName, field);
+    });
+
+    field.addEventListener("blur", () => {
+      validateField(fieldName, field);
+    });
+  });
+}
+
+/* UTM tracking */
+function getUTMData() {
+  const params = new URLSearchParams(window.location.search);
+
+  return {
+    source: params.get("utm_source") || "direct",
+    campaign: params.get("utm_campaign") || "",
+    medium: params.get("utm_medium") || ""
+  };
+}
+
+function buildPayload(fieldsObject) {
+  const utm = getUTMData();
+
+  return {
+    fullName: fieldsObject.fullName.value.trim(),
+    email: fieldsObject.email.value.trim(),
+    phone: fieldsObject.phone.value.trim(),
+    serviceType: fieldsObject.serviceType.value.trim(),
+    businessName: fieldsObject.businessName.value.trim(),
+    message: fieldsObject.message.value.trim(),
+    source: utm.source,
+    campaign: utm.campaign,
+    medium: utm.medium,
+    pageUrl: window.location.href
+  };
+}
+
+async function submitToGoogleSheet(payload) {
+  const response = await fetch(GOOGLE_SCRIPT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify(payload)
   });
 
-  field.addEventListener("blur", () => {
-    validateField(fieldName, field);
-  });
-});
+  const resultText = await response.text();
 
-/* Form submission */
-if (leadForm) {
-  leadForm.addEventListener("submit", (event) => {
+  try {
+    return JSON.parse(resultText);
+  } catch (error) {
+    return {
+      status: "success",
+      message: "Lead submitted"
+    };
+  }
+}
+
+function handleFormSubmit(form, fieldsObject, successBox, onSuccess) {
+  if (!form) return;
+
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     let isFormValid = true;
 
-    Object.entries(formFields).forEach(([fieldName, field]) => {
+    Object.entries(fieldsObject).forEach(([fieldName, field]) => {
       const valid = validateField(fieldName, field);
       if (!valid) {
         isFormValid = false;
@@ -183,25 +253,62 @@ if (leadForm) {
     });
 
     if (!isFormValid) {
-      successMessage.classList.remove("show");
-      successMessage.textContent = "";
+      successBox.classList.remove("show");
+      successBox.textContent = "";
       return;
     }
 
-    successMessage.textContent =
-      "Thank you! Your requirement has been submitted successfully.";
-    successMessage.classList.add("show");
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalButtonText = submitButton ? submitButton.textContent : "";
 
-    leadForm.reset();
+    try {
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Submitting...";
+      }
 
-    Object.values(formFields).forEach((field) => {
-      clearError(field);
-    });
+      const payload = buildPayload(fieldsObject);
+      const result = await submitToGoogleSheet(payload);
 
-    setTimeout(() => {
-      closeModal();
-      successMessage.classList.remove("show");
-      successMessage.textContent = "";
-    }, 2200);
+      if (result.status !== "success") {
+        throw new Error(result.message || "Submission failed");
+      }
+
+      successBox.textContent = "Thank you! Your requirement has been submitted successfully.";
+      successBox.classList.add("show");
+
+      form.reset();
+
+      Object.values(fieldsObject).forEach((field) => {
+        clearError(field);
+      });
+
+      if (typeof onSuccess === "function") {
+        onSuccess(successBox);
+      }
+    } catch (error) {
+      console.error("Google Sheet submission error:", error);
+      successBox.textContent = "Something went wrong. Please try again.";
+      successBox.classList.add("show");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalButtonText;
+      }
+    }
   });
 }
+
+bindLiveValidation(modalFormFields);
+bindLiveValidation(contactFormFields);
+
+handleFormSubmit(leadForm, modalFormFields, successMessage, () => {
+  setTimeout(() => {
+    window.location.href = "thankyou.html";
+  }, 1200);
+});
+handleFormSubmit(contactForm, contactFormFields, contactSuccessMessage, () => {
+  setTimeout(() => {
+    window.location.href = "thankyou.html";
+  }, 1200);
+});
