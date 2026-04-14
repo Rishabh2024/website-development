@@ -54,6 +54,8 @@ if (mobileToggle && navMenu) {
 
 /* Modal controls */
 function openModal() {
+  if (!modal) return;
+
   modal.classList.add("show");
   modal.setAttribute("aria-hidden", "false");
   document.body.classList.add("body-lock");
@@ -66,6 +68,8 @@ function openModal() {
 }
 
 function closeModal() {
+  if (!modal) return;
+
   modal.classList.remove("show");
   modal.setAttribute("aria-hidden", "true");
   document.body.classList.remove("body-lock");
@@ -91,6 +95,27 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && modal && modal.classList.contains("show")) {
     closeModal();
   }
+});
+
+/* FAQ toggle */
+const faqItems = document.querySelectorAll(".faq-item");
+
+faqItems.forEach((item) => {
+  const question = item.querySelector(".faq-question");
+
+  if (!question) return;
+
+  question.addEventListener("click", () => {
+    const isActive = item.classList.contains("active");
+
+    faqItems.forEach((faqItem) => {
+      faqItem.classList.remove("active");
+    });
+
+    if (!isActive) {
+      item.classList.add("active");
+    }
+  });
 });
 
 /* Validation helpers */
@@ -195,7 +220,7 @@ function getUTMData() {
   return {
     source: params.get("utm_source") || "direct",
     campaign: params.get("utm_campaign") || "",
-    medium: params.get("utm_medium") || ""
+    medium: params.get("utm_medium") || "",
   };
 }
 
@@ -212,7 +237,7 @@ function buildPayload(fieldsObject) {
     source: utm.source,
     campaign: utm.campaign,
     medium: utm.medium,
-    pageUrl: window.location.href
+    pageUrl: window.location.href,
   };
 }
 
@@ -220,9 +245,9 @@ async function submitToGoogleSheet(payload) {
   const response = await fetch(GOOGLE_SCRIPT_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "text/plain;charset=utf-8"
+      "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   const resultText = await response.text();
@@ -232,7 +257,7 @@ async function submitToGoogleSheet(payload) {
   } catch (error) {
     return {
       status: "success",
-      message: "Lead submitted"
+      message: "Lead submitted",
     };
   }
 }
@@ -307,6 +332,7 @@ handleFormSubmit(leadForm, modalFormFields, successMessage, () => {
     window.location.href = "thankyou.html";
   }, 1200);
 });
+
 handleFormSubmit(contactForm, contactFormFields, contactSuccessMessage, () => {
   setTimeout(() => {
     window.location.href = "thankyou.html";
